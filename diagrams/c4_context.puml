@@ -1,0 +1,26 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title C4 Уровень 1: System Context - Выдача валюты в Сбербанке
+
+Person(client, "Клиент", "Запрашивает валюту в кассе")
+Person(operator, "Кассир / Операционист", "Обслуживает клиента, проверяет эскалации")
+
+System(currency_system, "Currency Issuance System", "Принимает решение о выдаче валюты на основе ML-скоринга")
+
+System_Ext(passport_system, "Система идентификации", "Проверяет паспортные данные")
+System_Ext(limits_system, "Система лимитов ЦБ", "Проверяет ограничения на валютные операции")
+
+' Взаимодействие с клиентом
+Rel(client, currency_system, "Запрашивает выдачу валюты через кассу")
+Rel(currency_system, client, "Возвращает вердикт (одобрено / отказ)")
+
+' Двустороннее взаимодействие с кассиром / операционистом
+Rel(operator, currency_system, "Вводит данные и передаёт результат ручного решения")
+Rel(currency_system, operator, "Передаёт запрос на ручную проверку (эскалация)")
+
+' Интеграции с внешними системами
+Rel(currency_system, passport_system, "Проверяет личность клиента")
+Rel(currency_system, limits_system, "Проверяет лимиты на валютные операции")
+
+@enduml

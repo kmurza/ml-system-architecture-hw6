@@ -1,0 +1,46 @@
+
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title C4 Уровень 2: Containers - Система выдачи валюты
+
+Person(client, "Клиент", "Запрашивает валюту")
+Person(operator, "Операционист", "Проверяет эскалации и принимает ручные решения")
+
+System_Boundary(sber_system, "Currency Issuance System") {
+    Container(api_gw, "API Gateway", "Nginx", "Принимает запросы от касс, обеспечивает взаимодействие с внутренними и внешними системами")
+    Container(ml_service, "ML Inference Service", "Python/FastAPI", "Считает скор вероятности")
+    Container(feature_store, "Feature Store", "Redis", "Хранит признаки клиента в реальном времени")
+    Container(model_registry, "Model Registry", "MLflow", "Хранит версии моделей")
+    Container(db, "Database", "PostgreSQL", "Хранит историю операций и вердикты")
+    Container(queue, "Message Queue", "Kafka", "Асинхронно передает данные в обучение")
+}
+
+' Внешние системы
+System_Ext(passport_system, "Система идентификации", "Проверяет паспортные данные и личность клиента")
+System_Ext(limits_system, "Система лимитов ЦБ", "Проверяет ограничения на валютные операции")
+
+' Взаимодействие с клиентом
+Rel(client, api_gw, "Отправляет запрос на выдачу валюты")
+
+' Взаимодействие внутренних контейнеров
+Rel(api_gw, ml_service, "Передает запрос на скоринг")
+Rel(ml_service, feature_store, "Запрашивает признаки")
+Rel(ml_service, model_registry, "Загружает актуальную версию модели")
+Rel(ml_service, api_gw, "Возвращает результат скоринга и вердикт")
+Rel(api_gw, db, "Сохраняет финальный результат")
+Rel(db, queue, "Передает размеченные данные для обучения")
+
+' Двустороннее взаимодействие с операционистом
+Rel(api_gw, operator, "Передает запрос на ручную проверку (эскалация)")
+Rel(operator, api_gw, "Передает результат ручной проверки и финальное решение")
+
+' Интеграция с системой идентификации
+Rel(api_gw, passport_system, "Передает паспортные данные для проверки личности")
+Rel(passport_system, api_gw, "Возвращает результат идентификации")
+
+' Интеграция с системой лимитов ЦБ
+Rel(api_gw, limits_system, "Передает параметры валютной операции для проверки лимитов")
+Rel(limits_system, api_gw, "Возвращает результат проверки лимитов")
+
+@enduml

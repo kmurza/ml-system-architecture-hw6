@@ -1,0 +1,672 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ns0:definitions xmlns:ns0="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:ns2="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:ns3="http://www.omg.org/spec/DD/20100524/DC" xmlns:ns4="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Currency" targetNamespace="http://sberbank.example/currency" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.33.1">
+  <ns0:message id="Message_ClientRequest" name="Запрос клиента на выдачу валюты" />
+  <ns0:message id="Message_OperationCompleted" name="Результат завершённой операции" />
+  <ns0:collaboration id="Collaboration_Currency">
+    <ns0:participant id="Participant_Client" name="Клиент" processRef="Process_Client" />
+    <ns0:participant id="Participant_FrontOffice" name="Пул 1: Обслуживание клиента и принятие решения" processRef="Process_Currency" />
+    <ns0:participant id="Participant_Learning" name="Пул 2: Контур обратной связи и подготовки данных" processRef="Process_Learning" />
+    <ns0:messageFlow id="MessageFlow_Request" name="Запрос на выдачу валюты" sourceRef="Client_SendRequest" targetRef="Start_Request" />
+    <ns0:messageFlow id="MessageFlow_Learning" name="Событие о завершённой операции" sourceRef="Task_PublishKafka" targetRef="Start_Learning" />
+  </ns0:collaboration>
+  <ns0:process id="Process_Client" name="Запрос клиента" isExecutable="false">
+    <ns0:startEvent id="Client_Start" name="Клиенту требуется иностранная валюта">
+      <ns0:outgoing>C_F1</ns0:outgoing>
+    </ns0:startEvent>
+    <ns0:sendTask id="Client_SendRequest" name="Передать запрос кассиру" messageRef="Message_ClientRequest">
+      <ns0:incoming>C_F1</ns0:incoming>
+      <ns0:outgoing>C_F2</ns0:outgoing>
+    </ns0:sendTask>
+    <ns0:endEvent id="Client_End" name="Запрос передан">
+      <ns0:incoming>C_F2</ns0:incoming>
+    </ns0:endEvent>
+    <ns0:sequenceFlow id="C_F1" sourceRef="Client_Start" targetRef="Client_SendRequest" />
+    <ns0:sequenceFlow id="C_F2" sourceRef="Client_SendRequest" targetRef="Client_End" />
+    <ns0:startEvent id="Event_08bdeqa" name="Результат получен" />
+  </ns0:process>
+  <ns0:process id="Process_Currency" name="Выдача наличной иностранной валюты" isExecutable="false">
+    <ns0:laneSet id="LaneSet_Currency">
+      <ns0:lane id="Lane_Operator" name="Операционист">
+        <ns0:flowNodeRef>Task_ManualReview</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_ManualDecision</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_ManualReject</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_ManualApprove</ns0:flowNodeRef>
+      </ns0:lane>
+      <ns0:lane id="Lane_System" name="Система принятия решения и ML-контур">
+        <ns0:flowNodeRef>Gateway_Merge</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_SaveResult</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_PublishKafka</ns0:flowNodeRef>
+        <ns0:flowNodeRef>End_Currency</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_IdentityCheck</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_GetFeatures</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_LoadModel</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_ServiceAvailable</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_FallbackReject</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_Fallback</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_FallbackApprove</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_Score</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_Inference</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_ReceiveRequest</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_LimitsCheck</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_Limits</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_Approve</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_Escalate</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_IssueCurrency</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_NotifyRefusal</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Gateway_Identity</ns0:flowNodeRef>
+      </ns0:lane>
+      <ns0:lane id="Lane_Cashier" name="Кассир / кассовый терминал">
+        <ns0:flowNodeRef>Task_EnterData</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Start_Request</ns0:flowNodeRef>
+        <ns0:flowNodeRef>Task_SendRequest</ns0:flowNodeRef>
+      </ns0:lane>
+    </ns0:laneSet>
+    <ns0:exclusiveGateway id="Gateway_Merge" name="Объединить результаты операции" gatewayDirection="Converging">
+      <ns0:incoming>F23</ns0:incoming>
+      <ns0:incoming>F24</ns0:incoming>
+      <ns0:outgoing>F25</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:serviceTask id="Task_SaveResult" name="Сохранить скор, проверки и итог операции в PostgreSQL">
+      <ns0:incoming>F25</ns0:incoming>
+      <ns0:outgoing>F26</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:sendTask id="Task_PublishKafka" name="Опубликовать событие с результатом в Kafka" messageRef="Message_OperationCompleted">
+      <ns0:incoming>F26</ns0:incoming>
+      <ns0:outgoing>F27</ns0:outgoing>
+    </ns0:sendTask>
+    <ns0:endEvent id="End_Currency" name="Обслуживание клиента завершено">
+      <ns0:incoming>F27</ns0:incoming>
+    </ns0:endEvent>
+    <ns0:serviceTask id="Task_IdentityCheck" name="Проверить личность клиента">
+      <ns0:incoming>F03</ns0:incoming>
+      <ns0:outgoing>F04</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:userTask id="Task_EnterData" name="Кассир вводит данные клиента и операции">
+      <ns0:incoming>F01</ns0:incoming>
+      <ns0:outgoing>F02</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:startEvent id="Start_Request" name="Получен запрос клиента">
+      <ns0:outgoing>F01</ns0:outgoing>
+    </ns0:startEvent>
+    <ns0:serviceTask id="Task_SendRequest" name="Передать запрос через API Gateway">
+      <ns0:incoming>F02</ns0:incoming>
+      <ns0:outgoing>F03</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_GetFeatures" name="Получить признаки из Feature Store">
+      <ns0:incoming>F09Y</ns0:incoming>
+      <ns0:outgoing>F10</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_LoadModel" name="Загрузить версию модели из Model Registry">
+      <ns0:incoming>F10</ns0:incoming>
+      <ns0:outgoing>F11</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:exclusiveGateway id="Gateway_ServiceAvailable" name="ML-сервис и данные доступны?" gatewayDirection="Diverging">
+      <ns0:incoming>F08</ns0:incoming>
+      <ns0:outgoing>F09Y</ns0:outgoing>
+      <ns0:outgoing>F09N</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:serviceTask id="Task_FallbackReject" name="Применить резервное правило: отказать">
+      <ns0:incoming>F16N</ns0:incoming>
+      <ns0:outgoing>F18</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:exclusiveGateway id="Gateway_Fallback" name="Сумма менее 50 000 руб. и клиент VIP?" gatewayDirection="Diverging">
+      <ns0:incoming>F09N</ns0:incoming>
+      <ns0:outgoing>F16Y</ns0:outgoing>
+      <ns0:outgoing>F16N</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:serviceTask id="Task_FallbackApprove" name="Применить резервное правило: предварительно одобрить">
+      <ns0:incoming>F16Y</ns0:incoming>
+      <ns0:outgoing>F17</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:exclusiveGateway id="Gateway_Score" name="Скор не ниже 0,85?" gatewayDirection="Diverging">
+      <ns0:incoming>F12</ns0:incoming>
+      <ns0:outgoing>F13Y</ns0:outgoing>
+      <ns0:outgoing>F13N</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:serviceTask id="Task_Inference" name="Рассчитать скор с помощью ML-модели">
+      <ns0:incoming>F11</ns0:incoming>
+      <ns0:outgoing>F12</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_ReceiveRequest" name="Передать запрос в ML Inference Service">
+      <ns0:incoming>F07N</ns0:incoming>
+      <ns0:outgoing>F08</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_LimitsCheck" name="Проверить ограничения валютной операции">
+      <ns0:incoming>F05Y</ns0:incoming>
+      <ns0:outgoing>F06</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:exclusiveGateway id="Gateway_Limits" name="Операция соответствует ограничениям?" gatewayDirection="Diverging">
+      <ns0:incoming>F06</ns0:incoming>
+      <ns0:outgoing>F07N</ns0:outgoing>
+      <ns0:outgoing>Flow_0dykun9</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:serviceTask id="Task_Approve" name="Сформировать предварительный вердикт: одобрить">
+      <ns0:incoming>F13Y</ns0:incoming>
+      <ns0:outgoing>F14</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_Escalate" name="Передать запрос на ручную проверку">
+      <ns0:incoming>F13N</ns0:incoming>
+      <ns0:outgoing>F15</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:userTask id="Task_ManualReview" name="Операционист проверяет операцию вручную">
+      <ns0:incoming>F15</ns0:incoming>
+      <ns0:outgoing>F19</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:userTask id="Task_IssueCurrency" name="Выдать валюту клиенту">
+      <ns0:incoming>F14</ns0:incoming>
+      <ns0:incoming>F17</ns0:incoming>
+      <ns0:incoming>F21</ns0:incoming>
+      <ns0:outgoing>F23</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:exclusiveGateway id="Gateway_ManualDecision" name="Операционист одобрил операцию?" gatewayDirection="Diverging">
+      <ns0:incoming>F19</ns0:incoming>
+      <ns0:outgoing>F20Y</ns0:outgoing>
+      <ns0:outgoing>F20N</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:userTask id="Task_ManualReject" name="Отклонить выдачу валюты">
+      <ns0:incoming>F20N</ns0:incoming>
+      <ns0:outgoing>Flow_1tudm1y</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:userTask id="Task_ManualApprove" name="Подтвердить выдачу валюты">
+      <ns0:incoming>F20Y</ns0:incoming>
+      <ns0:outgoing>F21</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:userTask id="Task_NotifyRefusal" name="Сообщить клиенту об отказе">
+      <ns0:incoming>F18</ns0:incoming>
+      <ns0:incoming>Flow_1tudm1y</ns0:incoming>
+      <ns0:incoming>Flow_102gh6i</ns0:incoming>
+      <ns0:incoming>Flow_0dykun9</ns0:incoming>
+      <ns0:outgoing>F24</ns0:outgoing>
+    </ns0:userTask>
+    <ns0:sequenceFlow id="F23" sourceRef="Task_IssueCurrency" targetRef="Gateway_Merge" />
+    <ns0:sequenceFlow id="F24" sourceRef="Task_NotifyRefusal" targetRef="Gateway_Merge" />
+    <ns0:sequenceFlow id="F25" sourceRef="Gateway_Merge" targetRef="Task_SaveResult" />
+    <ns0:sequenceFlow id="F26" sourceRef="Task_SaveResult" targetRef="Task_PublishKafka" />
+    <ns0:sequenceFlow id="F27" sourceRef="Task_PublishKafka" targetRef="End_Currency" />
+    <ns0:sequenceFlow id="F03" sourceRef="Task_SendRequest" targetRef="Task_IdentityCheck" />
+    <ns0:sequenceFlow id="F04" sourceRef="Task_IdentityCheck" targetRef="Gateway_Identity" />
+    <ns0:sequenceFlow id="F05Y" name="Да" sourceRef="Gateway_Identity" targetRef="Task_LimitsCheck">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">identityValid == true</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F01" sourceRef="Start_Request" targetRef="Task_EnterData" />
+    <ns0:sequenceFlow id="F02" sourceRef="Task_EnterData" targetRef="Task_SendRequest" />
+    <ns0:sequenceFlow id="F09Y" name="Да" sourceRef="Gateway_ServiceAvailable" targetRef="Task_GetFeatures">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">mlAvailable == true and featuresAvailable == true</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F10" sourceRef="Task_GetFeatures" targetRef="Task_LoadModel" />
+    <ns0:sequenceFlow id="F11" sourceRef="Task_LoadModel" targetRef="Task_Inference" />
+    <ns0:sequenceFlow id="F08" sourceRef="Task_ReceiveRequest" targetRef="Gateway_ServiceAvailable" />
+    <ns0:sequenceFlow id="F09N" name="Нет / ошибка / таймаут" sourceRef="Gateway_ServiceAvailable" targetRef="Gateway_Fallback">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">mlAvailable == false or featuresAvailable == false</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F16N" name="Нет" sourceRef="Gateway_Fallback" targetRef="Task_FallbackReject">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">amount &gt;= 50000 or vip == false</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F18" sourceRef="Task_FallbackReject" targetRef="Task_NotifyRefusal" />
+    <ns0:sequenceFlow id="F16Y" name="Да" sourceRef="Gateway_Fallback" targetRef="Task_FallbackApprove">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">amount &lt; 50000 and vip == true</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F17" sourceRef="Task_FallbackApprove" targetRef="Task_IssueCurrency" />
+    <ns0:sequenceFlow id="F12" sourceRef="Task_Inference" targetRef="Gateway_Score" />
+    <ns0:sequenceFlow id="F13Y" name="Да" sourceRef="Gateway_Score" targetRef="Task_Approve">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">score &gt;= 0.85</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F13N" name="Нет" sourceRef="Gateway_Score" targetRef="Task_Escalate">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">score &lt; 0.85</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F07N" name="Нет" sourceRef="Gateway_Limits" targetRef="Task_ReceiveRequest">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">limitsValid == false</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F06" sourceRef="Task_LimitsCheck" targetRef="Gateway_Limits" />
+    <ns0:sequenceFlow id="F14" sourceRef="Task_Approve" targetRef="Task_IssueCurrency" />
+    <ns0:sequenceFlow id="F15" sourceRef="Task_Escalate" targetRef="Task_ManualReview" />
+    <ns0:sequenceFlow id="F19" sourceRef="Task_ManualReview" targetRef="Gateway_ManualDecision" />
+    <ns0:sequenceFlow id="F21" sourceRef="Task_ManualApprove" targetRef="Task_IssueCurrency" />
+    <ns0:sequenceFlow id="F20Y" name="Да" sourceRef="Gateway_ManualDecision" targetRef="Task_ManualApprove">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">manualDecision == 'APPROVE'</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="F20N" name="Нет" sourceRef="Gateway_ManualDecision" targetRef="Task_ManualReject">
+      <ns0:conditionExpression xsi:type="ns0:tFormalExpression">manualDecision == 'REJECT'</ns0:conditionExpression>
+    </ns0:sequenceFlow>
+    <ns0:sequenceFlow id="Flow_1tudm1y" sourceRef="Task_ManualReject" targetRef="Task_NotifyRefusal" />
+    <ns0:sequenceFlow id="Flow_102gh6i" sourceRef="Gateway_Identity" targetRef="Task_NotifyRefusal" />
+    <ns0:exclusiveGateway id="Gateway_Identity" name="Личность подтверждена?" gatewayDirection="Diverging">
+      <ns0:incoming>F04</ns0:incoming>
+      <ns0:outgoing>F05Y</ns0:outgoing>
+      <ns0:outgoing>Flow_102gh6i</ns0:outgoing>
+    </ns0:exclusiveGateway>
+    <ns0:sequenceFlow id="Flow_0dykun9" sourceRef="Gateway_Limits" targetRef="Task_NotifyRefusal" />
+  </ns0:process>
+  <ns0:process id="Process_Learning" name="Обратная связь и подготовка данных" isExecutable="false">
+    <ns0:startEvent id="Start_Learning" name="Получено событие о завершённой операции">
+      <ns0:outgoing>L01</ns0:outgoing>
+    </ns0:startEvent>
+    <ns0:serviceTask id="Task_GetLabels" name="Получить скор, итоговое решение и фактический статус операции">
+      <ns0:incoming>L01</ns0:incoming>
+      <ns0:outgoing>L02</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:serviceTask id="Task_UpdateDataset" name="Сформировать и обновить размеченную запись датасета">
+      <ns0:incoming>L02</ns0:incoming>
+      <ns0:outgoing>L03</ns0:outgoing>
+    </ns0:serviceTask>
+    <ns0:task id="Task_QualityMonitoring" name="Передать данные для оценки качества и следующего цикла обучения">
+      <ns0:incoming>L03</ns0:incoming>
+      <ns0:outgoing>L04</ns0:outgoing>
+    </ns0:task>
+    <ns0:endEvent id="End_Learning" name="Данные переданы в контур обучения">
+      <ns0:incoming>L04</ns0:incoming>
+    </ns0:endEvent>
+    <ns0:sequenceFlow id="L01" sourceRef="Start_Learning" targetRef="Task_GetLabels" />
+    <ns0:sequenceFlow id="L02" sourceRef="Task_GetLabels" targetRef="Task_UpdateDataset" />
+    <ns0:sequenceFlow id="L03" sourceRef="Task_UpdateDataset" targetRef="Task_QualityMonitoring" />
+    <ns0:sequenceFlow id="L04" sourceRef="Task_QualityMonitoring" targetRef="End_Learning" />
+  </ns0:process>
+  <ns2:BPMNDiagram id="BPMNDiagram_Currency">
+    <ns2:BPMNPlane id="BPMNPlane_Currency" bpmnElement="Collaboration_Currency">
+      <ns2:BPMNShape id="Participant_FrontOffice_di_di" bpmnElement="Participant_FrontOffice" isHorizontal="true">
+        <ns3:Bounds x="160" y="280" width="3980" height="800" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Lane_Operator_di_di" bpmnElement="Lane_Operator" isHorizontal="true">
+        <ns3:Bounds x="190" y="880" width="3950" height="200" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Lane_System_di_di" bpmnElement="Lane_System" isHorizontal="true">
+        <ns3:Bounds x="190" y="450" width="3950" height="430" />
+        <ns2:BPMNLabel />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Lane_Cashier_di_di" bpmnElement="Lane_Cashier" isHorizontal="true">
+        <ns3:Bounds x="190" y="280" width="3950" height="170" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_Merge_di" bpmnElement="Gateway_Merge" isMarkerVisible="true">
+        <ns3:Bounds x="3520" y="500" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="3513" y="450" width="63" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_SaveResult_di" bpmnElement="Task_SaveResult">
+        <ns3:Bounds x="3610" y="485" width="180" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_PublishKafka_di" bpmnElement="Task_PublishKafka">
+        <ns3:Bounds x="3820" y="485" width="180" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="End_Currency_di" bpmnElement="End_Currency">
+        <ns3:Bounds x="4040" y="507" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="4020" y="543" width="76" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_IdentityCheck_di" bpmnElement="Task_IdentityCheck">
+        <ns3:Bounds x="730" y="660" width="160" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_EnterData_di" bpmnElement="Task_EnterData">
+        <ns3:Bounds x="375" y="320" width="150" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Start_Request_di" bpmnElement="Start_Request">
+        <ns3:Bounds x="272" y="342" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="249" y="387.5" width="82" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_SendRequest_di" bpmnElement="Task_SendRequest">
+        <ns3:Bounds x="570" y="320" width="160" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_GetFeatures_di" bpmnElement="Task_GetFeatures">
+        <ns3:Bounds x="1700" y="470" width="160" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_LoadModel_di" bpmnElement="Task_LoadModel">
+        <ns3:Bounds x="1900" y="470" width="160" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_ServiceAvailable_di" bpmnElement="Gateway_ServiceAvailable" isMarkerVisible="true">
+        <ns3:Bounds x="1633" y="575" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1678" y="580" width="64" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_FallbackReject_di" bpmnElement="Task_FallbackReject">
+        <ns3:Bounds x="1830" y="610" width="180" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_Fallback_di" bpmnElement="Gateway_Fallback" isMarkerVisible="true">
+        <ns3:Bounds x="1695" y="675" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1745" y="680" width="90" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_FallbackApprove_di" bpmnElement="Task_FallbackApprove">
+        <ns3:Bounds x="1830" y="720" width="180" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_Score_di" bpmnElement="Gateway_Score" isMarkerVisible="true">
+        <ns3:Bounds x="2345" y="485" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2335" y="456.5" width="70" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_Inference_di" bpmnElement="Task_Inference">
+        <ns3:Bounds x="2120" y="470" width="160" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_ReceiveRequest_di" bpmnElement="Task_ReceiveRequest">
+        <ns3:Bounds x="1385" y="560" width="170" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_LimitsCheck_di" bpmnElement="Task_LimitsCheck">
+        <ns3:Bounds x="1040" y="560" width="170" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_Limits_di" bpmnElement="Gateway_Limits" isMarkerVisible="true">
+        <ns3:Bounds x="1265" y="575" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1250" y="525" width="79" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_Approve_di" bpmnElement="Task_Approve">
+        <ns3:Bounds x="2502" y="470" width="175" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_Escalate_di" bpmnElement="Task_Escalate">
+        <ns3:Bounds x="2502" y="580" width="175" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_ManualReview_di" bpmnElement="Task_ManualReview">
+        <ns3:Bounds x="2500" y="920" width="180" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_IssueCurrency_di" bpmnElement="Task_IssueCurrency">
+        <ns3:Bounds x="3202" y="720" width="175" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_ManualDecision_di" bpmnElement="Gateway_ManualDecision" isMarkerVisible="true">
+        <ns3:Bounds x="2725" y="935" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2712" y="885" width="75" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_ManualReject_di" bpmnElement="Task_ManualReject">
+        <ns3:Bounds x="2842" y="994" width="175" height="75" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_ManualApprove_di" bpmnElement="Task_ManualApprove">
+        <ns3:Bounds x="2842" y="892" width="175" height="75" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_NotifyRefusal_di" bpmnElement="Task_NotifyRefusal">
+        <ns3:Bounds x="3062" y="510" width="175" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Gateway_Identity_di" bpmnElement="Gateway_Identity" isMarkerVisible="true">
+        <ns3:Bounds x="930" y="675" width="50" height="50" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="915" y="637.5" width="80" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNEdge id="F23_di" bpmnElement="F23">
+        <ns4:waypoint x="3377" y="760" />
+        <ns4:waypoint x="3545" y="760" />
+        <ns4:waypoint x="3545" y="550" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F24_di" bpmnElement="F24">
+        <ns4:waypoint x="3237" y="550" />
+        <ns4:waypoint x="3344" y="550" />
+        <ns4:waypoint x="3344" y="525" />
+        <ns4:waypoint x="3520" y="525" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F25_di" bpmnElement="F25">
+        <ns4:waypoint x="3570" y="525" />
+        <ns4:waypoint x="3590" y="525" />
+        <ns4:waypoint x="3610" y="525" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F26_di" bpmnElement="F26">
+        <ns4:waypoint x="3790" y="525" />
+        <ns4:waypoint x="3805" y="525" />
+        <ns4:waypoint x="3820" y="525" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F27_di" bpmnElement="F27">
+        <ns4:waypoint x="4000" y="525" />
+        <ns4:waypoint x="4020" y="525" />
+        <ns4:waypoint x="4040" y="525" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F03_di" bpmnElement="F03">
+        <ns4:waypoint x="650" y="400" />
+        <ns4:waypoint x="650" y="700" />
+        <ns4:waypoint x="730" y="700" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F04_di" bpmnElement="F04">
+        <ns4:waypoint x="890" y="700" />
+        <ns4:waypoint x="930" y="700" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F05Y_di" bpmnElement="F05Y">
+        <ns4:waypoint x="980" y="700" />
+        <ns4:waypoint x="1010" y="700" />
+        <ns4:waypoint x="1079" y="640" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="988" y="675" width="14" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F01_di" bpmnElement="F01">
+        <ns4:waypoint x="308" y="360" />
+        <ns4:waypoint x="375" y="360" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F02_di" bpmnElement="F02">
+        <ns4:waypoint x="525" y="360" />
+        <ns4:waypoint x="570" y="360" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F09Y_di" bpmnElement="F09Y">
+        <ns4:waypoint x="1658" y="575" />
+        <ns4:waypoint x="1658" y="510" />
+        <ns4:waypoint x="1700" y="510" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1633" y="534" width="14" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F10_di" bpmnElement="F10">
+        <ns4:waypoint x="1860" y="510" />
+        <ns4:waypoint x="1900" y="510" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F11_di" bpmnElement="F11">
+        <ns4:waypoint x="2060" y="510" />
+        <ns4:waypoint x="2120" y="510" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F08_di" bpmnElement="F08">
+        <ns4:waypoint x="1555" y="600" />
+        <ns4:waypoint x="1633" y="600" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F09N_di" bpmnElement="F09N">
+        <ns4:waypoint x="1658" y="625" />
+        <ns4:waypoint x="1658" y="700" />
+        <ns4:waypoint x="1695" y="700" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1583" y="636" width="73" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F16N_di" bpmnElement="F16N">
+        <ns4:waypoint x="1720" y="675" />
+        <ns4:waypoint x="1720" y="650" />
+        <ns4:waypoint x="1830" y="650" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1740" y="633" width="19" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F18_di" bpmnElement="F18">
+        <ns4:waypoint x="2009" y="685" />
+        <ns4:waypoint x="3150" y="685" />
+        <ns4:waypoint x="3150" y="590" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F16Y_di" bpmnElement="F16Y">
+        <ns4:waypoint x="1720" y="725" />
+        <ns4:waypoint x="1720" y="760" />
+        <ns4:waypoint x="1830" y="760" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1743" y="743" width="14" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F17_di" bpmnElement="F17">
+        <ns4:waypoint x="2010" y="760" />
+        <ns4:waypoint x="3202" y="760" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F12_di" bpmnElement="F12">
+        <ns4:waypoint x="2280" y="510" />
+        <ns4:waypoint x="2345" y="510" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F13Y_di" bpmnElement="F13Y">
+        <ns4:waypoint x="2395" y="510" />
+        <ns4:waypoint x="2502" y="510" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2447" y="533" width="14" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F13N_di" bpmnElement="F13N">
+        <ns4:waypoint x="2370" y="535" />
+        <ns4:waypoint x="2370" y="620" />
+        <ns4:waypoint x="2502" y="620" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2376" y="567" width="19" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F07N_di" bpmnElement="F07N">
+        <ns4:waypoint x="1315" y="600" />
+        <ns4:waypoint x="1385" y="600" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="970" y="773" width="19" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F06_di" bpmnElement="F06">
+        <ns4:waypoint x="1210" y="600" />
+        <ns4:waypoint x="1265" y="600" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F14_di" bpmnElement="F14">
+        <ns4:waypoint x="2677" y="510" />
+        <ns4:waypoint x="2817" y="510" />
+        <ns4:waypoint x="2817" y="760" />
+        <ns4:waypoint x="3202" y="760" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F15_di" bpmnElement="F15">
+        <ns4:waypoint x="2590" y="660" />
+        <ns4:waypoint x="2590" y="920" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F19_di" bpmnElement="F19">
+        <ns4:waypoint x="2680" y="960" />
+        <ns4:waypoint x="2725" y="960" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F21_di" bpmnElement="F21">
+        <ns4:waypoint x="2930" y="892" />
+        <ns4:waypoint x="2930" y="853" />
+        <ns4:waypoint x="3290" y="853" />
+        <ns4:waypoint x="3290" y="800" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F20Y_di" bpmnElement="F20Y">
+        <ns4:waypoint x="2775" y="960" />
+        <ns4:waypoint x="2799" y="960" />
+        <ns4:waypoint x="2799" y="929" />
+        <ns4:waypoint x="2842" y="929" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2814" y="933" width="14" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="F20N_di" bpmnElement="F20N">
+        <ns4:waypoint x="2750" y="985" />
+        <ns4:waypoint x="2750" y="1031" />
+        <ns4:waypoint x="2842" y="1031" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2783" y="1008" width="19" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="Flow_1tudm1y_di" bpmnElement="Flow_1tudm1y">
+        <ns4:waypoint x="3017" y="1032" />
+        <ns4:waypoint x="3040" y="1032" />
+        <ns4:waypoint x="3040" y="580" />
+        <ns4:waypoint x="3062" y="580" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="Flow_102gh6i_di" bpmnElement="Flow_102gh6i">
+        <ns4:waypoint x="955" y="725" />
+        <ns4:waypoint x="955" y="840" />
+        <ns4:waypoint x="3110" y="840" />
+        <ns4:waypoint x="3110" y="590" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="Flow_0dykun9_di" bpmnElement="Flow_0dykun9">
+        <ns4:waypoint x="1290" y="625" />
+        <ns4:waypoint x="1290" y="820" />
+        <ns4:waypoint x="2220" y="820" />
+        <ns4:waypoint x="3062" y="553" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNShape id="Participant_Learning_di_di" bpmnElement="Participant_Learning" isHorizontal="true">
+        <ns3:Bounds x="160" y="1130" width="1250" height="140" />
+        <ns2:BPMNLabel />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Start_Learning_di" bpmnElement="Start_Learning">
+        <ns3:Bounds x="230" y="1182" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="214" y="1218" width="69" height="53" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_GetLabels_di" bpmnElement="Task_GetLabels">
+        <ns3:Bounds x="350" y="1160" width="200" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_UpdateDataset_di" bpmnElement="Task_UpdateDataset">
+        <ns3:Bounds x="610" y="1160" width="210" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Task_QualityMonitoring_di" bpmnElement="Task_QualityMonitoring">
+        <ns3:Bounds x="880" y="1160" width="230" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="End_Learning_di" bpmnElement="End_Learning">
+        <ns3:Bounds x="1180" y="1182" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="1156" y="1218" width="85" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNEdge id="L01_di" bpmnElement="L01">
+        <ns4:waypoint x="266" y="1200" />
+        <ns4:waypoint x="350" y="1200" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="L02_di" bpmnElement="L02">
+        <ns4:waypoint x="550" y="1200" />
+        <ns4:waypoint x="610" y="1200" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="L03_di" bpmnElement="L03">
+        <ns4:waypoint x="820" y="1200" />
+        <ns4:waypoint x="880" y="1200" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="L04_di" bpmnElement="L04">
+        <ns4:waypoint x="1110" y="1200" />
+        <ns4:waypoint x="1180" y="1200" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNShape id="Participant_Client_di_di" bpmnElement="Participant_Client" isHorizontal="true">
+        <ns3:Bounds x="160" y="80" width="700" height="180" />
+        <ns2:BPMNLabel />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Client_Start_di" bpmnElement="Client_Start">
+        <ns3:Bounds x="242" y="142" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="227" y="178" width="66" height="53" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Client_SendRequest_di" bpmnElement="Client_SendRequest">
+        <ns3:Bounds x="345" y="120" width="150" height="80" />
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Client_End_di" bpmnElement="Client_End">
+        <ns3:Bounds x="562" y="142" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="539" y="178" width="83" height="14" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNShape id="Event_08bdeqa_di" bpmnElement="Event_08bdeqa">
+        <ns3:Bounds x="672" y="142" width="36" height="36" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="665" y="185" width="51" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNShape>
+      <ns2:BPMNEdge id="C_F1_di" bpmnElement="C_F1">
+        <ns4:waypoint x="278" y="160" />
+        <ns4:waypoint x="345" y="160" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="C_F2_di" bpmnElement="C_F2">
+        <ns4:waypoint x="495" y="160" />
+        <ns4:waypoint x="562" y="160" />
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="MessageFlow_Learning_di" bpmnElement="MessageFlow_Learning">
+        <ns4:waypoint x="3910" y="565" />
+        <ns4:waypoint x="3910" y="1100" />
+        <ns4:waypoint x="248" y="1100" />
+        <ns4:waypoint x="248" y="1182" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="2045" y="1075" width="69" height="40" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+      <ns2:BPMNEdge id="MessageFlow_Request_di" bpmnElement="MessageFlow_Request">
+        <ns4:waypoint x="383" y="200" />
+        <ns4:waypoint x="290" y="300" />
+        <ns4:waypoint x="290" y="342" />
+        <ns2:BPMNLabel>
+          <ns3:Bounds x="289" y="228" width="80" height="27" />
+        </ns2:BPMNLabel>
+      </ns2:BPMNEdge>
+    </ns2:BPMNPlane>
+  </ns2:BPMNDiagram>
+</ns0:definitions>

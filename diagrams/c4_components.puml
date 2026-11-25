@@ -1,0 +1,28 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title C4 Уровень 3: Components - ML Inference Service
+
+Container_Boundary(ml_service, "ML Inference Service") {
+    Component(api_handler, "API Handler", "FastAPI", "Принимает запросы от API Gateway")
+    Component(feature_fetcher, "Feature Fetcher", "Python", "Собирает признаки из Feature Store")
+    Component(model_loader, "Model Loader", "Python/MLflow", "Загружает нужную версию модели")
+    Component(inference_engine, "Inference Engine", "Scikit-learn/ONNX", "Считает скор")
+    Component(threshold_checker, "Threshold Checker", "Python", "Применяет порог 0.85")
+}
+
+Container_Ext(feature_store, "Feature Store", "Redis")
+Container_Ext(model_registry, "Model Registry", "MLflow")
+Container_Ext(api_gw, "API Gateway", "Nginx")
+
+Rel(api_gw, api_handler, "Отправляет запрос")
+Rel(api_handler, feature_fetcher, "Запрашивает признаки")
+Rel(feature_fetcher, feature_store, "Читает признаки")
+Rel(api_handler, model_loader, "Запрашивает модель")
+Rel(model_loader, model_registry, "Читает версию модели")
+Rel(feature_fetcher, inference_engine, "Передает признаки")
+Rel(model_loader, inference_engine, "Передает модель")
+Rel(inference_engine, threshold_checker, "Передает скор")
+Rel(threshold_checker, api_handler, "Возвращает вердикт (одобрено/эскалация)")
+
+@enduml
